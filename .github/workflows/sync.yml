@@ -5,36 +5,38 @@ permissions:
 
 on:
   schedule:
-    - cron: "0 0 * * *" # every day
+    - cron: "0 0 * * *" # every day，UTC 00:00
   workflow_dispatch:
 
 jobs:
   sync_latest_from_upstream:
     name: Sync latest commits from upstream repo
     runs-on: ubuntu-latest
-    if: ${{ github.event.repository.fork }}
-
+    # 独立仓库（非 fork）⇒ 不能用 Fork-Sync action 的 fork 判断，改为原生命令 merge。
+    # 上游：huilang-me/CF-Server-Monitor。用 merge 不用 force push，避免冲掉本地改动。
     steps:
-      # Step 1: run a standard checkout action
       - name: Checkout target repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # Step 2: run the sync action
       - name: Sync upstream changes
         id: sync
-        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4
-        with:
-          upstream_sync_repo: huilang-me/CF-Server-Monitor
-          upstream_sync_branch: main
-          target_sync_branch: main
-          target_repo_token: ${{ secrets.GITHUB_TOKEN }} # automatically generated, no need to set
-
-          # Set test_mode true to run tests instead of the true action!!
-          test_mode: false
-
-      - name: Sync check
-        if: failure()
         run: |
-          echo "[Error] 由于上游仓库的 workflow 文件变更，导致 GitHub 自动暂停了本次自动更新，请前往仓库页面手动执行 Sync Fork 操作。"
-          echo "[Error] Due to a change in the workflow file of the upstream repository, GitHub has automatically suspended the scheduled automatic update. You need to manually sync your fork."
-          exit 1
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/huilang-me/CF-Server-Monitor.git
+          git fetch upstream main --tags
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "上游无新提交"
+            echo "has_new_commits=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "has_new_commits=true" >> "$GITHUB_OUTPUT"
+          git merge upstream/main --no-edit -m "chore: 同步上游 huilang-me/CF-Server-Monitor"
+          git push origin main
+          echo "已同步上游提交"
+
+      - name: Sync summary
+        run: echo "has_new_commits=${{ steps.sync.outputs.has_new_commits }}"
