@@ -8,9 +8,9 @@ on:
       - '**.md'
       - '.gitignore'
       - 'LICENSE'
-  # fork 仓库的 push 事件不触发工作流（实测 event=push 运行数为 0），用定时兜底
+  # 每小时兜底（push 已能触发，这里防漏）
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:
